@@ -10,7 +10,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "postinstall": "playwright install chromium"
+    "postinstall": "playwright install chromium",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
     "playwright": "^1.62.0"

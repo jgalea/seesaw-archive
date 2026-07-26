@@ -9,6 +9,8 @@ import { openArchives, readArchives, describePage } from './archives.js';
 import {
   loadManifest, saveManifest, manifestKey, downloadArchive, formatBytes,
 } from './download.js';
+import { schoolYear, matchesYear } from './names.js';
+import { isInteractive, confirm, pickArchives } from './prompt.js';
 
 const DEFAULT_OUT = path.join(os.homedir(), 'Downloads', 'Seesaw Archives');
 
@@ -24,6 +26,9 @@ Usage:
 Options:
   --out <dir>        Where to save   (default: ~/Downloads/Seesaw Archives)
   --child <name>     Only this child (substring match, repeatable)
+  --year <year>      Only this school year, e.g. 2024-25 (repeatable)
+  --pick             Choose from a numbered menu before downloading
+  --yes, -y          Skip the confirmation prompt
   --dry-run          List what would be downloaded, download nothing
   --force            Re-download archives already recorded as done
   --include-empty    Don't skip archives that look empty
@@ -34,12 +39,15 @@ Options:
 `;
 
 function parseArgs(argv) {
-  const opts = { children: [], out: DEFAULT_OUT, timeout: 900000 };
+  const opts = { children: [], years: [], out: DEFAULT_OUT, timeout: 900000 };
   const rest = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--out') opts.out = argv[++i];
     else if (arg === '--child') opts.children.push(argv[++i]);
+    else if (arg === '--year') opts.years.push(argv[++i]);
+    else if (arg === '--pick') opts.pick = true;
+    else if (arg === '--yes' || arg === '-y') opts.yes = true;
     else if (arg === '--timeout') opts.timeout = Number(argv[++i]);
     else if (arg === '--limit') opts.limit = Number(argv[++i]);
     else if (arg === '--dry-run') opts.dryRun = true;
@@ -93,9 +101,26 @@ function selectArchives(archives, opts) {
         !opts.children.some((c) => a.childName.toLowerCase().includes(c.toLowerCase()))) {
       return false;
     }
+    if (opts.years.length && !opts.years.some((y) => matchesYear(a.className, y))) {
+      return false;
+    }
     if (!opts.includeEmpty && a.looksEmpty) return false;
     return true;
   });
+}
+
+// Group by child, then year, so the numbered menu reads the way a parent thinks
+// about it rather than in whatever order Seesaw happened to render.
+function sortArchives(archives) {
+  return [...archives].sort((a, b) =>
+    a.childName.localeCompare(b.childName) ||
+    String(schoolYear(a.className)).localeCompare(String(schoolYear(b.className))) ||
+    a.className.localeCompare(b.className));
+}
+
+function describeArchive(a) {
+  const year = schoolYear(a.className);
+  return `${a.className}${year ? '' : '  (no year in name)'}`;
 }
 
 async function cmdLogin(opts) {
@@ -139,28 +164,37 @@ async function cmdList(opts) {
       log('No archives found on this account.');
       return;
     }
+    const selected = sortArchives(selectArchives(archives, opts));
     const byChild = new Map();
-    for (const a of archives) {
+    for (const a of selected) {
       const key = a.childName || 'Unknown child';
       if (!byChild.has(key)) byChild.set(key, []);
       byChild.get(key).push(a);
     }
     for (const [child, rows] of byChild) {
       log(`\n${child}  (${rows.length})`);
+      let lastYear;
       for (const row of rows) {
+        const year = schoolYear(row.className) || 'no year';
+        if (year !== lastYear) {
+          log(`  ${year}`);
+          lastYear = year;
+        }
         const flags = [row.looksEmpty ? 'looks empty' : null, row.disabled ? 'disabled' : null]
           .filter(Boolean).join(', ');
-        log(`  - ${row.className || '(unnamed class)'}${flags ? `  [${flags}]` : ''}`);
+        log(`    - ${row.className || '(unnamed class)'}${flags ? `  [${flags}]` : ''}`);
       }
     }
-    log(`\n${archives.length} archive(s) total.`);
+    const years = [...new Set(selected.map((a) => schoolYear(a.className)).filter(Boolean))].sort();
+    log(`\n${selected.length} archive(s)${selected.length === archives.length ? '' : ` of ${archives.length}`} across ${byChild.size} child(ren).`);
+    if (years.length) log(`Years: ${years.join(', ')}   (filter with --year 2024-25)`);
   });
 }
 
 async function cmdDownload(opts) {
   await withArchives(opts, async (page) => {
     const all = await readArchives(page);
-    const wanted = selectArchives(all, opts);
+    const wanted = sortArchives(selectArchives(all, opts));
     const skipped = all.length - wanted.length;
 
     if (!wanted.length) {
@@ -174,14 +208,50 @@ async function cmdDownload(opts) {
     if (opts.limit) queue = queue.slice(0, opts.limit);
 
     log(`${all.length} archive(s) on the account.`);
-    if (skipped) log(`${skipped} filtered out (empty or child filter).`);
+    if (skipped) log(`${skipped} filtered out by --child/--year or looking empty.`);
     if (already) log(`${already} already downloaded (use --force to redo).`);
-    log(`${queue.length} to fetch into ${opts.out}\n`);
+
+    if (opts.pick) {
+      if (!isInteractive()) {
+        console.error('--pick needs an interactive terminal. Use --child/--year instead.');
+        process.exitCode = 1;
+        return;
+      }
+      queue = await pickArchives(queue, {
+        formatLine: describeArchive,
+        groupOf: (a) => `${a.childName || 'Unknown child'}`,
+        matchWord: (word) => queue
+          .map((a, i) => (
+            a.childName.toLowerCase().includes(word.toLowerCase()) ||
+            matchesYear(a.className, word) ? i : -1))
+          .filter((i) => i >= 0),
+      });
+      if (!queue.length) {
+        log('Nothing selected.');
+        return;
+      }
+    }
+
+    log(`\n${queue.length} to fetch into ${opts.out}`);
 
     if (opts.dryRun) {
       for (const a of queue) log(`  would download: ${a.childName} / ${a.className}`);
       return;
     }
+
+    // Each archive is a few hundred MB and Seesaw prepares them one at a time,
+    // so a full account is an hours-long run. Worth a look before starting.
+    if (!opts.yes && isInteractive()) {
+      const byChild = new Map();
+      for (const a of queue) byChild.set(a.childName, (byChild.get(a.childName) || 0) + 1);
+      const summary = [...byChild].map(([child, n]) => `${child}: ${n}`).join(', ');
+      log(`  ${summary}`);
+      if (!(await confirm(`Download ${queue.length} archive(s)?`))) {
+        log('Cancelled.');
+        return;
+      }
+    }
+    log('');
 
     let done = 0;
     let failed = 0;

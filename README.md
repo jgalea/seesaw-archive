@@ -46,11 +46,49 @@ seesaw-archive list        # see what's on the account
 seesaw-archive download    # fetch everything
 ```
 
-Useful flags:
+By default it shows you what it's about to fetch and asks before starting.
+
+### Choosing what to download
+
+With several children and a few years each, an account can hold thirty-odd archives. Three ways to narrow it down:
+
+Pick from a menu:
+
+```sh
+seesaw-archive download --pick
+```
+
+```
+  Ada Ross
+    1. Art PK4-A 2023-24
+    2. Gross Motor PK4-A 2023-24
+    3. Homeroom K5-A 2024-25
+
+  Sam Ross
+    4. Art PK3-A 2024-25
+    5. Music PK3-A 2024-25
+
+  Pick by number (1-3,7), by child or year (Ada, 2024-25), or "all".
+  Which ones? (empty to cancel):
+```
+
+Or say it up front:
+
+```sh
+seesaw-archive download --child Ada                    # one child
+seesaw-archive download --year 2024-25                 # one school year
+seesaw-archive download --child Ada --year 2024-25     # both at once
+seesaw-archive download --child Ada --child Sam        # repeatable
+```
+
+`--year` takes `2024-25`, `2024-2025`, or either single year on its own. `seesaw-archive list` prints which years the account actually has.
+
+Other flags:
 
 ```sh
 seesaw-archive download --dry-run              # show the plan, fetch nothing
-seesaw-archive download --child Ada            # one child only
+seesaw-archive download --yes                  # skip the confirmation
+seesaw-archive download --limit 3              # stop after three
 seesaw-archive download --out ~/Archive/Kids   # somewhere else
 seesaw-archive download --force                # re-fetch things already done
 seesaw-archive list --json                     # machine-readable
