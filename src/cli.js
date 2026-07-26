@@ -5,7 +5,7 @@ import fs from 'node:fs/promises';
 import {
   openContext, saveSession, clearSession, hasSavedSession, isSignedIn, SEESAW_URL, STATE_PATH,
 } from './session.js';
-import { openArchives, readArchives, describePage } from './archives.js';
+import { openArchives, readArchives, describePage, dismissAlert } from './archives.js';
 import {
   loadManifest, saveManifest, manifestKey, downloadArchive, formatBytes,
 } from './download.js';
@@ -209,7 +209,11 @@ async function cmdDownload(opts) {
 
     log(`${all.length} archive(s) on the account.`);
     if (skipped) log(`${skipped} filtered out by --child/--year or looking empty.`);
-    if (already) log(`${already} already downloaded (use --force to redo).`);
+    if (already) {
+      const wasEmpty = wanted.filter((a) => manifest.downloads[manifestKey(a)]?.empty).length;
+      const detail = wasEmpty ? ` (${already - wasEmpty} downloaded, ${wasEmpty} empty)` : '';
+      log(`${already} already handled${detail}. Use --force to redo.`);
+    }
 
     if (opts.pick) {
       if (!isInteractive()) {
@@ -251,10 +255,20 @@ async function cmdDownload(opts) {
 
     let done = 0;
     let failed = 0;
+    let empty = 0;
+    let lastAlert = null;
     for (const archive of queue) {
       const label = `${archive.childName} / ${archive.className}`;
-      log(`[${done + failed + 1}/${queue.length}] ${label} …`);
+      log(`[${done + failed + empty + 1}/${queue.length}] ${label} …`);
       try {
+        // Seesaw's own alert dialog is left open by the previous archive and
+        // swallows clicks until it's closed.
+        const alertText = await dismissAlert(page);
+        if (alertText && alertText !== lastAlert) {
+          log(`    Seesaw said: ${alertText.slice(0, 160)}`);
+          lastAlert = alertText;
+        }
+
         // Rows re-render while zips are prepared, so re-resolve this archive's
         // position by class id instead of trusting the index we read earlier.
         const current = await readArchives(page);
@@ -265,6 +279,23 @@ async function cmdDownload(opts) {
           outDir: opts.out,
           timeout: opts.timeout,
         });
+
+        if (result.empty) {
+          // Recorded like a download so re-runs don't ask Seesaw again.
+          manifest.downloads[manifestKey(archive)] = {
+            empty: true,
+            message: result.message,
+            childName: archive.childName,
+            className: archive.className,
+            checkedAt: new Date().toISOString(),
+          };
+          await saveManifest(opts.out, manifest);
+          empty += 1;
+          log('    empty, nothing archived for this class');
+          await dismissAlert(page);
+          await page.waitForTimeout(1000);
+          continue;
+        }
 
         if (result.classIdMatches === false) {
           log(`    warning: download URL points at a different class than the row`);
@@ -281,12 +312,25 @@ async function cmdDownload(opts) {
         log(`    saved ${path.basename(result.dest)} (${formatBytes(result.bytes)})`);
       } catch (err) {
         failed += 1;
-        log(`    failed: ${err.message}`);
+        log(`    failed: ${err.message.split('\n')[0]}`);
+        // A failure here is nearly always about what Seesaw put on screen, so
+        // record that rather than leaving only a timeout to reason about.
+        try {
+          const onScreen = await page.locator('.sp-alert').first()
+            .innerText({ timeout: 2000 })
+            .catch(() => '');
+          if (onScreen) log(`    on screen: ${onScreen.replace(/\s+/g, ' ').trim().slice(0, 200)}`);
+          const shot = path.join(opts.out, `failed-${manifestKey(archive).replace(/[^\w.-]/g, '_')}.png`);
+          await page.screenshot({ path: shot }).catch(() => {});
+          log(`    screenshot: ${path.basename(shot)}`);
+        } catch {
+          /* diagnostics are best effort */
+        }
       }
       await page.waitForTimeout(3000);
     }
 
-    log(`\nDone. ${done} downloaded, ${failed} failed.`);
+    log(`\nDone. ${done} downloaded, ${empty} empty, ${failed} failed.`);
     if (failed) log('Re-run the same command to retry only what is missing.');
   });
 }

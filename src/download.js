@@ -1,7 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { childFolder, archiveFilename } from './names.js';
-import { clickDownload } from './archives.js';
+import { clickDownload, waitForAlert } from './archives.js';
+
+// Seesaw only reveals that a class has nothing archived after you ask for it.
+export const EMPTY_NOTICE = /no items to download|nothing to download|no items yet/i;
 
 const MANIFEST_NAME = '.seesaw-archive.json';
 
@@ -37,8 +40,29 @@ export async function downloadArchive(page, archive, { outDir, timeout = 900000 
   const dest = path.join(dir, archiveFilename(archive));
 
   const pending = page.waitForEvent('download', { timeout });
+  // If the click fails or the browser closes first, this promise still settles
+  // later. Without a handler it surfaces as an unhandled rejection and takes
+  // the whole process down after the run has already reported its results.
+  pending.catch(() => {});
+
   await clickDownload(page, archive.index);
-  const download = await pending;
+
+  // A click is answered either by a file eventually arriving, or by an alert
+  // saying the class is empty. Waiting only for the download means an empty
+  // class stalls for the whole timeout.
+  const outcome = await Promise.race([
+    pending.then((d) => ({ download: d })),
+    waitForAlert(page, timeout).then((text) => ({ alertText: text })),
+  ]);
+
+  if (outcome.alertText) {
+    if (EMPTY_NOTICE.test(outcome.alertText)) {
+      return { empty: true, message: outcome.alertText };
+    }
+    // Any other notice is Seesaw talking about progress, so keep waiting.
+  }
+
+  const download = outcome.download || await pending;
   await download.saveAs(dest);
 
   const { size } = await fs.stat(dest);

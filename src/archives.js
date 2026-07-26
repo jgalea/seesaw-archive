@@ -105,6 +105,43 @@ export async function readArchives(page) {
   }, ROW_SELECTOR);
 }
 
+// After an archive is requested Seesaw puts up an alert dialog, and it sits
+// over the list intercepting pointer events. Left alone, every following click
+// retries against the overlay until it times out. Returns the dialog's text the
+// first time it's seen so the caller can surface what Seesaw actually said.
+export async function dismissAlert(page) {
+  // Only the alert, never `.modal.in` generally: the archive list is itself a
+  // modal, and closing that would end the run.
+  const modal = page.locator('.sp-alert').first();
+  if (!(await modal.count().catch(() => 0))) return null;
+  if (!(await modal.isVisible().catch(() => false))) return null;
+
+  const text = (await modal.innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+
+  const ok = modal.getByRole('button', { name: /^\s*(ok|close|dismiss|got it)\s*$/i }).first();
+  if (await ok.count().catch(() => 0)) {
+    await ok.click({ timeout: 5000 }).catch(() => {});
+  } else {
+    await modal.locator('button, .btn').first().click({ timeout: 5000 }).catch(() => {});
+  }
+
+  // Angular's modal fades out; wait for it to stop intercepting clicks.
+  await modal.waitFor({ state: 'hidden', timeout: 10000 }).catch(async () => {
+    await page.keyboard.press('Escape').catch(() => {});
+    await modal.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {});
+  });
+  await page.waitForTimeout(500);
+  return text;
+}
+
+// Seesaw answers a Download Journal click with an alert in more than one case,
+// so callers have to read the text rather than treat any alert as meaningful.
+export async function waitForAlert(page, timeout) {
+  const modal = page.locator('.sp-alert').first();
+  await modal.waitFor({ state: 'visible', timeout });
+  return (await modal.innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+}
+
 export async function clickDownload(page, index) {
   const row = page.locator(ROW_SELECTOR).nth(index);
   const button = row.locator('button.btn.btn-primary').first();

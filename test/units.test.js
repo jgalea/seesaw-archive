@@ -4,6 +4,14 @@ import {
   schoolYear, matchesYear, archiveFilename, childFolder, matchIndexes,
 } from '../src/names.js';
 import { parseSelection } from '../src/prompt.js';
+import { EMPTY_NOTICE } from '../src/download.js';
+
+test('the empty-class notice is recognised from what Seesaw actually says', () => {
+  assert.ok(EMPTY_NOTICE.test('There are no items to download yet for Ada Ross! OK'));
+  assert.ok(EMPTY_NOTICE.test('Nothing to download'));
+  assert.equal(EMPTY_NOTICE.test('Your download is being prepared'), false);
+  assert.equal(EMPTY_NOTICE.test("We'll email you a link when it's ready"), false);
+});
 
 test('schoolYear pulls the year out of a class name', () => {
   assert.equal(schoolYear('Art PK4-A 2023-24'), '2023-24');
