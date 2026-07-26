@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { schoolYear, matchesYear, archiveFilename, childFolder } from '../src/names.js';
+import {
+  schoolYear, matchesYear, archiveFilename, childFolder, matchIndexes,
+} from '../src/names.js';
 import { parseSelection } from '../src/prompt.js';
 
 test('schoolYear pulls the year out of a class name', () => {
@@ -8,6 +10,11 @@ test('schoolYear pulls the year out of a class name', () => {
   assert.equal(schoolYear('PK4-A 2025-26 The Hedgehogs'), '2025-26');
   assert.equal(schoolYear('Homeroom 2024-2025'), '2024-25');
   assert.equal(schoolYear('1A Lenguas y sociales con Ms Silvia'), null);
+  // Seen on a real account: teachers write the short form too.
+  assert.equal(schoolYear('PK4-A Library 23-24'), '2023-24');
+  // Non-consecutive pairs are room or group numbers, not school years.
+  assert.equal(schoolYear('Reading Group 12-19'), null);
+  assert.equal(schoolYear('Homeroom 1-A'), null);
 });
 
 test('matchesYear accepts the shapes a parent would type', () => {
@@ -28,6 +35,19 @@ test('filenames keep the child and stay filesystem-safe', () => {
     'Ada_Ross_Art_Music.zip'
   );
   assert.equal(childFolder(''), 'Unknown_Child');
+});
+
+test('typing a child name or year at the menu selects the right rows', () => {
+  const rows = [
+    { childName: 'Ada Ross', className: 'Art PK4-A 2023-24' },
+    { childName: 'Ada Ross', className: 'Music K5-A 2024-25' },
+    { childName: 'Sam Ross', className: 'Art PK3-A 2024-25' },
+  ];
+  assert.deepEqual(matchIndexes(rows, 'Ada'), [0, 1]);
+  assert.deepEqual(matchIndexes(rows, 'ada'), [0, 1]);
+  assert.deepEqual(matchIndexes(rows, '2024-25'), [1, 2]);
+  assert.deepEqual(matchIndexes(rows, 'Ross'), [0, 1, 2]);
+  assert.deepEqual(matchIndexes(rows, 'nobody'), []);
 });
 
 test('parseSelection handles numbers, ranges, all, and words', () => {

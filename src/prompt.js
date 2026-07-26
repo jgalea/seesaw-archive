@@ -8,7 +8,10 @@ export function isInteractive() {
 async function ask(question) {
   const rl = readline.createInterface({ input: stdin, output: stdout });
   try {
-    return (await rl.question(question)).trim();
+    // Ctrl+D or a closed stdin rejects here; treat it as "cancel" rather than
+    // letting it surface as a crash.
+    const answer = await rl.question(question).catch(() => '');
+    return String(answer ?? '').trim();
   } finally {
     rl.close();
   }

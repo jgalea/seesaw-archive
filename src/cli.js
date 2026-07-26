@@ -9,7 +9,7 @@ import { openArchives, readArchives, describePage } from './archives.js';
 import {
   loadManifest, saveManifest, manifestKey, downloadArchive, formatBytes,
 } from './download.js';
-import { schoolYear, matchesYear } from './names.js';
+import { schoolYear, matchesYear, matchIndexes } from './names.js';
 import { isInteractive, confirm, pickArchives } from './prompt.js';
 
 const DEFAULT_OUT = path.join(os.homedir(), 'Downloads', 'Seesaw Archives');
@@ -220,11 +220,7 @@ async function cmdDownload(opts) {
       queue = await pickArchives(queue, {
         formatLine: describeArchive,
         groupOf: (a) => `${a.childName || 'Unknown child'}`,
-        matchWord: (word) => queue
-          .map((a, i) => (
-            a.childName.toLowerCase().includes(word.toLowerCase()) ||
-            matchesYear(a.className, word) ? i : -1))
-          .filter((i) => i >= 0),
+        matchWord: (word) => matchIndexes(queue, word),
       });
       if (!queue.length) {
         log('Nothing selected.');
