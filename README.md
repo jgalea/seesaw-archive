@@ -104,6 +104,10 @@ Sessions expire after a while. When that happens, commands say so and you run `l
 
 Seesaw builds each zip on its servers after you click, then redirects to the finished file. Clicking several at once makes it cancel downloads or silently email you a link instead. So this fetches strictly one at a time and waits for each file to land, which is slower but actually finishes. Archives run 40-50 MB each, so a full account can be a gigabyte and take a while.
 
+## Unofficial
+
+Not affiliated with or endorsed by Seesaw. It signs in as you and downloads the archives your own account already offers through its interface, nothing else. Seesaw reshuffles their site from time to time, and when they do, this needs a fix before it works again.
+
 ## Notes
 
 - Reads only. It downloads archives and changes nothing in your Seesaw account.
