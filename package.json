@@ -1,0 +1,19 @@
+{
+  "name": "seesaw-archive",
+  "version": "0.1.0",
+  "description": "Download your children's Seesaw journal archives with real filenames, organized per child",
+  "type": "module",
+  "bin": {
+    "seesaw-archive": "src/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.62.0"
+  },
+  "license": "MIT"
+}
