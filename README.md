@@ -2,6 +2,8 @@
 
 # seesaw-archive
 
+[seesaw-archive CLI](https://github.com/jgalea/seesaw-archive) | [Chrome extension](https://github.com/jgalea/seesaw-downloader)
+
 [![License](https://img.shields.io/badge/LICENSE-MIT-5C9E31?style=for-the-badge)](LICENSE)
 [![Built by](https://img.shields.io/badge/BUILT%20BY-REBELCODE-8A2BE2?style=for-the-badge)](https://rebelcode.com)
 
@@ -103,6 +105,10 @@ Sessions expire after a while. When that happens, commands say so and you run `l
 ## Why it downloads slowly
 
 Seesaw builds each zip on its servers after you click, then redirects to the finished file. Clicking several at once makes it cancel downloads or silently email you a link instead. So this fetches strictly one at a time and waits for each file to land, which is slower but actually finishes. Archives run 40-50 MB each, so a full account can be a gigabyte and take a while.
+
+## Not comfortable with a terminal?
+
+There's a [Chrome extension](https://github.com/jgalea/seesaw-downloader) that does the naming part without any of this. You still click each archive yourself in Seesaw, but each one saves under a proper name. This CLI is the version that walks a whole account unattended.
 
 ## Unofficial
 
