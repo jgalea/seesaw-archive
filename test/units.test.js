@@ -5,6 +5,35 @@ import {
 } from '../src/names.js';
 import { parseSelection } from '../src/prompt.js';
 import { EMPTY_NOTICE } from '../src/download.js';
+import { extractUrls, googleId, isGoogle } from '../src/links.js';
+
+test('link extraction catches pasted URLs, not just anchors', () => {
+  const html = `<img src="post.jpg">
+    <td>Photos: https://drive.google.com/drive/folders/ABC123 </td>
+    <a href="https://docs.google.com/presentation/d/XYZ789/edit">deck</a>
+    <a href="http://web.seesaw.me"><img src="https://app.seesaw.me/logo.png"></a>`;
+  const urls = extractUrls(html);
+  assert.ok(urls.includes('https://drive.google.com/drive/folders/ABC123'), 'bare URL');
+  assert.ok(urls.includes('https://docs.google.com/presentation/d/XYZ789/edit'), 'anchor');
+  // Seesaw's own chrome appears in every post and would drown the real signal.
+  assert.equal(urls.some((u) => /seesaw\.me/.test(u)), false);
+});
+
+test('trailing punctuation is not swallowed into the URL', () => {
+  const urls = extractUrls('<td>See https://drive.google.com/drive/folders/ABC123.</td>');
+  assert.deepEqual(urls, ['https://drive.google.com/drive/folders/ABC123']);
+});
+
+test('Google links are classified by what they point at', () => {
+  assert.deepEqual(googleId('https://drive.google.com/drive/folders/ABC123'),
+    { id: 'ABC123', kind: 'folder' });
+  assert.deepEqual(googleId('https://docs.google.com/presentation/d/XYZ789/edit?usp=drive_web'),
+    { id: 'XYZ789', kind: 'slides' });
+  assert.deepEqual(googleId('https://drive.google.com/file/d/F1LE/view'),
+    { id: 'F1LE', kind: 'file' });
+  assert.equal(googleId('https://granjaaventurapark.com/'), null);
+  assert.equal(isGoogle('https://issuu.com/x/docs/y'), false);
+});
 
 test('the empty-class notice is recognised from what Seesaw actually says', () => {
   assert.ok(EMPTY_NOTICE.test('There are no items to download yet for Ada Ross! OK'));

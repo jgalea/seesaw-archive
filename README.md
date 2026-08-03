@@ -46,6 +46,7 @@ Node 20 or newer.
 seesaw-archive login       # opens a window, you sign in yourself
 seesaw-archive list        # see what's on the account
 seesaw-archive download    # fetch everything
+seesaw-archive links       # find linked-but-not-included content
 ```
 
 By default it shows you what it's about to fetch and asks before starting.
@@ -105,6 +106,33 @@ Sessions expire after a while. When that happens, commands say so and you run `l
 ## Why it downloads slowly
 
 Seesaw builds each zip on its servers after you click, then redirects to the finished file. Clicking several at once makes it cancel downloads or silently email you a link instead. So this fetches strictly one at a time and waits for each file to land, which is slower but actually finishes. Archives run 40-50 MB each, so a full account can be a gigabyte and take a while.
+
+## What the archives don't contain
+
+Photos and videos are inside the zips. Anything a teacher linked to instead of uploading, a Google Drive folder of trip photos, a Slides deck, a newsletter Doc, is only a URL in the post. The archive records that it existed without holding it, and those links tend to stop working once a school year closes.
+
+```sh
+seesaw-archive links
+```
+
+That reads every post in the downloaded archives and lists what they point at but don't include, grouped by child and class, and writes `linked-content.tsv` next to them. Folders matter most: one link can stand for hundreds of photos.
+
+To pull that content down, generate a script and run it:
+
+```sh
+seesaw-archive links --fetch-script fetch-linked.sh
+./fetch-linked.sh
+```
+
+It needs [rclone](https://rclone.org) with a read-only Google Drive remote, which you authorize in your browser:
+
+```sh
+rclone config create gdrive drive scope=drive.readonly
+```
+
+Expect some failures. Google answers "not found" both for files that were deleted and for files never shared with you, so the two can't be told apart. If something matters, ask the teacher while they're still reachable.
+
+Worth knowing: teachers often share photo folders by email rather than through Seesaw. Those never appear in an archive at all, so this command can't see them.
 
 ## Not comfortable with a terminal?
 

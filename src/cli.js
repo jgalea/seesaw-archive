@@ -11,6 +11,7 @@ import {
 } from './download.js';
 import { schoolYear, matchesYear, matchIndexes } from './names.js';
 import { isInteractive, confirm, pickArchives } from './prompt.js';
+import { scanArchives, dedupe, toTsv } from './links.js';
 
 const DEFAULT_OUT = path.join(os.homedir(), 'Downloads', 'Seesaw Archives');
 
@@ -20,6 +21,7 @@ Usage:
   seesaw-archive login              Sign in once (you type your own password)
   seesaw-archive list               Show every archive on the account
   seesaw-archive download           Download them all, one child folder each
+  seesaw-archive links              Find content the archives link to but don't contain
   seesaw-archive debug              Dump what the page looks like right now
   seesaw-archive logout             Forget the saved session
 
@@ -34,6 +36,7 @@ Options:
   --include-empty    Don't skip archives that look empty
   --headless         Run without a visible window
   --limit <n>        Stop after n archives
+  --fetch-script <f> links: write an rclone script to pull the linked content
   --timeout <ms>     Per-archive wait  (default: 900000, 15 min)
   --json             Machine-readable output for list/debug
 `;
@@ -50,6 +53,7 @@ function parseArgs(argv) {
     else if (arg === '--yes' || arg === '-y') opts.yes = true;
     else if (arg === '--timeout') opts.timeout = Number(argv[++i]);
     else if (arg === '--limit') opts.limit = Number(argv[++i]);
+    else if (arg === '--fetch-script') opts.fetchScript = argv[++i];
     else if (arg === '--dry-run') opts.dryRun = true;
     else if (arg === '--force') opts.force = true;
     else if (arg === '--include-empty') opts.includeEmpty = true;
@@ -335,6 +339,67 @@ async function cmdDownload(opts) {
   });
 }
 
+// Photos and videos live inside the archives, but anything a teacher linked to
+// instead of uploading is only a URL in the post. This reports that gap.
+async function cmdLinks(opts) {
+  const { archives, posts, links } = await scanArchives(opts.out);
+  const unique = dedupe(links);
+  const google = unique.filter((l) => l.google);
+  const folders = google.filter((l) => l.kind === 'folder');
+
+  if (opts.json) {
+    log(JSON.stringify({ archives, posts, links: unique }, null, 2));
+    return;
+  }
+
+  log(`Scanned ${archives} archive(s), ${posts} post(s) in ${opts.out}\n`);
+  if (!unique.length) {
+    log('Every post links only to media held inside the archives.');
+    return;
+  }
+
+  const byClass = new Map();
+  for (const l of unique) {
+    const key = `${l.child} / ${l.className}`;
+    if (!byClass.has(key)) byClass.set(key, []);
+    byClass.get(key).push(l);
+  }
+  for (const [cls, rows] of [...byClass].sort()) {
+    log(`${cls}  (${rows.length})`);
+    for (const r of rows.sort((a, b) => a.postDate.localeCompare(b.postDate))) {
+      log(`  ${r.postDate}  ${r.kind.padEnd(7)} ${r.url.slice(0, 90)}`);
+    }
+    log('');
+  }
+
+  const tsv = path.join(opts.out, 'linked-content.tsv');
+  await fs.writeFile(tsv, toTsv(unique));
+  log(`${unique.length} unique link(s), ${google.length} on Google Drive.`);
+  if (folders.length) log(`${folders.length} of them are folders, which may hold many photos each.`);
+  log(`Written to ${tsv}`);
+
+  if (opts.fetchScript && google.length) {
+    const lines = [
+      '#!/bin/bash',
+      '# Fetch the Google content referenced by Seesaw posts.',
+      '# Needs rclone with a Google Drive remote named "gdrive":',
+      '#   rclone config create gdrive drive scope=drive.readonly',
+      '# Files you no longer have access to will fail; that is expected.',
+      'set -u',
+      '',
+    ];
+    for (const l of google) {
+      const dest = `"Linked Content/${l.child}/${l.className}"`;
+      lines.push(`mkdir -p ${dest}`);
+      lines.push(l.kind === 'folder'
+        ? `rclone copy gdrive: ${dest} --drive-root-folder-id ${l.id}   # ${l.postDate}`
+        : `rclone backend copyid gdrive: ${l.id} ${dest}/   # ${l.postDate} ${l.kind}`);
+    }
+    await fs.writeFile(opts.fetchScript, lines.join('\n') + '\n', { mode: 0o755 });
+    log(`Fetch script written to ${opts.fetchScript}`);
+  }
+}
+
 async function cmdDebug(opts) {
   await requireSession();
   const { browser, page } = await openContext({ headless: Boolean(opts.headless) });
@@ -365,6 +430,7 @@ async function main() {
     case 'login': return cmdLogin(opts);
     case 'list': return cmdList(opts);
     case 'download': return cmdDownload(opts);
+    case 'links': return cmdLinks(opts);
     case 'debug': return cmdDebug(opts);
     case 'logout':
       await clearSession();
