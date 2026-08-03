@@ -105,7 +105,11 @@ Sessions expire after a while. When that happens, commands say so and you run `l
 
 ## Why it downloads slowly
 
-Seesaw builds each zip on its servers after you click, then redirects to the finished file. Clicking several at once makes it cancel downloads or silently email you a link instead. So this fetches strictly one at a time and waits for each file to land, which is slower but actually finishes. Archives run 40-50 MB each, so a full account can be a gigabyte and take a while.
+Seesaw builds each zip on its servers after you click, then redirects to the finished file. Clicking several at once makes it cancel downloads or silently email you a link instead. So this fetches strictly one at a time and waits for each file to land, which is slower but actually finishes.
+
+Archive sizes vary wildly. On a real two-child account they ran from 8 MB to 6 GB, with 15 GB across 18 archives, so check you have the disk space before starting. A class with a lot of video is what makes the difference.
+
+Some classes have nothing archived in them, which Seesaw only tells you after you ask for the download. Those are recorded and skipped, so re-runs don't ask again.
 
 ## What the archives don't contain
 
