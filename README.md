@@ -111,15 +111,21 @@ Archive sizes vary wildly. On a real two-child account they ran from 8 MB to 6 G
 
 Some classes have nothing archived in them, which Seesaw only tells you after you ask for the download. Those are recorded and skipped, so re-runs don't ask again.
 
-## What the archives don't contain
+## The photos that aren't in your archive
 
-Photos and videos are inside the zips. Anything a teacher linked to instead of uploading, a Google Drive folder of trip photos, a Slides deck, a newsletter Doc, is only a URL in the post. The archive records that it existed without holding it, and those links tend to stop working once a school year closes.
+This is the part worth knowing about, because the archive gives no sign of it.
+
+When a teacher uploads a Drive folder of trip photos, they post it to Seesaw as a link. Seesaw's export saves that post's preview image, caption, date and tagged students, but not the URL it points to. So a post captioned "All the pictures here!" comes down as a screenshot of a Drive folder listing, with nothing to click and no way to work out where it pointed.
+
+Your archive looks complete. The bulk photo sets are simply absent, and nothing in the files says so.
 
 ```sh
 seesaw-archive links
 ```
 
-That reads every post in the downloaded archives and lists what they point at but don't include, grouped by child and class, and writes `linked-content.tsv` next to them. Folders matter most: one link can stand for hundreds of photos.
+This opens each class feed in Seesaw and reads the link targets from the live app, which is the only place they exist. It pages each feed back to the beginning, so it reaches the early years and not just this term. Results are grouped by child and class and written to `linked-content.tsv`.
+
+On a real two-child account across four years, this found 110 linked items that the 15 GB archive did not contain, 10 of them Drive folders. A single folder held 331 photos.
 
 To pull that content down, generate a script and run it:
 
@@ -136,7 +142,7 @@ rclone config create gdrive drive scope=drive.readonly
 
 Expect some failures. Google answers "not found" both for files that were deleted and for files never shared with you, so the two can't be told apart. If something matters, ask the teacher while they're still reachable.
 
-Worth knowing: teachers often share photo folders by email rather than through Seesaw. Those never appear in an archive at all, so this command can't see them.
+Two more places photos hide, neither of which any archive covers: folders teachers share by email, and Seesaw's Messages section, which is separate from journal posts and isn't part of the export.
 
 ## Not comfortable with a terminal?
 

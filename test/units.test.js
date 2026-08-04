@@ -5,23 +5,25 @@ import {
 } from '../src/names.js';
 import { parseSelection } from '../src/prompt.js';
 import { EMPTY_NOTICE } from '../src/download.js';
-import { extractUrls, googleId, isGoogle } from '../src/links.js';
+import { extractGoogleUrls, googleId, isGoogle, cleanUrl, feedUrl } from '../src/links.js';
 
-test('link extraction catches pasted URLs, not just anchors', () => {
-  const html = `<img src="post.jpg">
-    <td>Photos: https://drive.google.com/drive/folders/ABC123 </td>
-    <a href="https://docs.google.com/presentation/d/XYZ789/edit">deck</a>
-    <a href="http://web.seesaw.me"><img src="https://app.seesaw.me/logo.png"></a>`;
-  const urls = extractUrls(html);
-  assert.ok(urls.includes('https://drive.google.com/drive/folders/ABC123'), 'bare URL');
-  assert.ok(urls.includes('https://docs.google.com/presentation/d/XYZ789/edit'), 'anchor');
-  // Seesaw's own chrome appears in every post and would drown the real signal.
-  assert.equal(urls.some((u) => /seesaw\.me/.test(u)), false);
+test('URLs are recovered from escaped JSON payloads', () => {
+  // Link targets arrive inside API responses, not as clean HTML attributes.
+  const payload = '{"itemType":"link","url":"https:\\/\\/drive.google.com\\/drive\\/folders\\/ABC123?usp=sharing","caption":"All the pictures here!"}';
+  assert.deepEqual(extractGoogleUrls(payload),
+    ['https://drive.google.com/drive/folders/ABC123?usp=sharing']);
 });
 
-test('trailing punctuation is not swallowed into the URL', () => {
-  const urls = extractUrls('<td>See https://drive.google.com/drive/folders/ABC123.</td>');
-  assert.deepEqual(urls, ['https://drive.google.com/drive/folders/ABC123']);
+test('quotes and trailing punctuation are stripped', () => {
+  assert.equal(cleanUrl('https://drive.google.com/drive/folders/ABC123"'),
+    'https://drive.google.com/drive/folders/ABC123');
+  assert.equal(cleanUrl('https://drive.google.com/drive/folders/ABC123.'),
+    'https://drive.google.com/drive/folders/ABC123');
+});
+
+test('the feed route is built from the class and person ids', () => {
+  assert.equal(feedUrl('person.abc', 'class.def'),
+    'https://app.seesaw.me/#/family/journals/person.abc/class.def');
 });
 
 test('Google links are classified by what they point at', () => {
@@ -31,7 +33,9 @@ test('Google links are classified by what they point at', () => {
     { id: 'XYZ789', kind: 'slides' });
   assert.deepEqual(googleId('https://drive.google.com/file/d/F1LE/view'),
     { id: 'F1LE', kind: 'file' });
-  assert.equal(googleId('https://granjaaventurapark.com/'), null);
+  assert.deepEqual(googleId('https://docs.google.com/forms/d/e/1FAI_form/viewform'),
+    { id: '1FAI_form', kind: 'form' });
+  assert.equal(googleId('https://example.com/'), null);
   assert.equal(isGoogle('https://issuu.com/x/docs/y'), false);
 });
 

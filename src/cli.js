@@ -11,7 +11,7 @@ import {
 } from './download.js';
 import { schoolYear, matchesYear, matchIndexes } from './names.js';
 import { isInteractive, confirm, pickArchives } from './prompt.js';
-import { scanArchives, dedupe, toTsv } from './links.js';
+import { collectClassLinks, dedupe, toTsv, fetchScript } from './links.js';
 
 const DEFAULT_OUT = path.join(os.homedir(), 'Downloads', 'Seesaw Archives');
 
@@ -339,64 +339,74 @@ async function cmdDownload(opts) {
   });
 }
 
-// Photos and videos live inside the archives, but anything a teacher linked to
-// instead of uploading is only a URL in the post. This reports that gap.
+// Seesaw's export saves a link post's preview image but not its target URL, so
+// a "all the photos here" post arrives as a screenshot of a Drive folder with
+// no way back to it. Those targets only exist in the live journal feed.
 async function cmdLinks(opts) {
-  const { archives, posts, links } = await scanArchives(opts.out);
-  const unique = dedupe(links);
-  const google = unique.filter((l) => l.google);
-  const folders = google.filter((l) => l.kind === 'folder');
-
-  if (opts.json) {
-    log(JSON.stringify({ archives, posts, links: unique }, null, 2));
-    return;
-  }
-
-  log(`Scanned ${archives} archive(s), ${posts} post(s) in ${opts.out}\n`);
-  if (!unique.length) {
-    log('Every post links only to media held inside the archives.');
-    return;
-  }
-
-  const byClass = new Map();
-  for (const l of unique) {
-    const key = `${l.child} / ${l.className}`;
-    if (!byClass.has(key)) byClass.set(key, []);
-    byClass.get(key).push(l);
-  }
-  for (const [cls, rows] of [...byClass].sort()) {
-    log(`${cls}  (${rows.length})`);
-    for (const r of rows.sort((a, b) => a.postDate.localeCompare(b.postDate))) {
-      log(`  ${r.postDate}  ${r.kind.padEnd(7)} ${r.url.slice(0, 90)}`);
+  await requireSession();
+  const { browser, page } = await openContext({ headless: Boolean(opts.headless) });
+  try {
+    if (!(await isSignedIn(page))) {
+      console.error('That saved session has expired. Run `seesaw-archive login` again.');
+      process.exitCode = 1;
+      return;
     }
-    log('');
-  }
-
-  const tsv = path.join(opts.out, 'linked-content.tsv');
-  await fs.writeFile(tsv, toTsv(unique));
-  log(`${unique.length} unique link(s), ${google.length} on Google Drive.`);
-  if (folders.length) log(`${folders.length} of them are folders, which may hold many photos each.`);
-  log(`Written to ${tsv}`);
-
-  if (opts.fetchScript && google.length) {
-    const lines = [
-      '#!/bin/bash',
-      '# Fetch the Google content referenced by Seesaw posts.',
-      '# Needs rclone with a Google Drive remote named "gdrive":',
-      '#   rclone config create gdrive drive scope=drive.readonly',
-      '# Files you no longer have access to will fail; that is expected.',
-      'set -u',
-      '',
-    ];
-    for (const l of google) {
-      const dest = `"Linked Content/${l.child}/${l.className}"`;
-      lines.push(`mkdir -p ${dest}`);
-      lines.push(l.kind === 'folder'
-        ? `rclone copy gdrive: ${dest} --drive-root-folder-id ${l.id}   # ${l.postDate}`
-        : `rclone backend copyid gdrive: ${l.id} ${dest}/   # ${l.postDate} ${l.kind}`);
+    if (!(await openArchives(page, { log: progress }))) {
+      console.error('Could not read the class list. Run `seesaw-archive list` to check access.');
+      process.exitCode = 1;
+      return;
     }
-    await fs.writeFile(opts.fetchScript, lines.join('\n') + '\n', { mode: 0o755 });
-    log(`Fetch script written to ${opts.fetchScript}`);
+
+    const classes = sortArchives(selectArchives(await readArchives(page), opts))
+      .filter((a) => a.classId && a.personId);
+    progress(`Reading ${classes.length} class feed(s)…`);
+
+    const all = [];
+    for (let i = 0; i < classes.length; i += 1) {
+      const a = classes[i];
+      const links = await collectClassLinks(page, a, {
+        onLink: (u) => { if (/drive\/folders/.test(u)) progress(`    folder: ${u.slice(0, 90)}`); },
+      });
+      all.push(...links);
+      progress(`[${i + 1}/${classes.length}] ${a.childName} / ${a.className} → ${links.length} link(s)`);
+    }
+
+    const unique = dedupe(all);
+    if (opts.json) {
+      log(JSON.stringify(unique, null, 2));
+      return;
+    }
+
+    if (!unique.length) {
+      log('No linked content found in any class feed.');
+      return;
+    }
+
+    const byClass = new Map();
+    for (const l of unique) {
+      const key = `${l.child} / ${l.className}`;
+      if (!byClass.has(key)) byClass.set(key, []);
+      byClass.get(key).push(l);
+    }
+    for (const [cls, rows] of [...byClass].sort()) {
+      log(`\n${cls}  (${rows.length})`);
+      for (const r of rows) log(`  ${r.kind.padEnd(7)} ${r.url.slice(0, 95)}`);
+    }
+
+    const folders = unique.filter((l) => l.kind === 'folder');
+    const tsv = path.join(opts.out, 'linked-content.tsv');
+    await fs.mkdir(opts.out, { recursive: true });
+    await fs.writeFile(tsv, toTsv(unique));
+    log(`\n${unique.length} linked item(s), ${folders.length} of them folders.`);
+    if (folders.length) log('A folder can hold hundreds of photos, so those matter most.');
+    log(`Written to ${tsv}`);
+
+    if (opts.fetchScript) {
+      await fs.writeFile(opts.fetchScript, fetchScript(unique), { mode: 0o755 });
+      log(`Fetch script written to ${opts.fetchScript}`);
+    }
+  } finally {
+    await browser.close();
   }
 }
 

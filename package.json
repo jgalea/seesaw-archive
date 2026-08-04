@@ -14,8 +14,7 @@
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "playwright": "^1.62.0",
-    "yauzl": "^3.4.0"
+    "playwright": "^1.62.0"
   },
   "license": "MIT"
 }
