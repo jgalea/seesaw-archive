@@ -1,10 +1,20 @@
+// Characters Windows refuses in file names, plus control characters.
+const UNSAFE = /[<>:"/\\|?*\x00-\x1f]/g;
+
 export function sanitize(text) {
   return String(text || '')
-    .replace(/[<>:"/\\|?*]/g, '_')
+    .replace(UNSAFE, '_')
     .replace(/\s+/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '')
-    .substring(0, 80);
+    .substring(0, 80)
+    // Windows silently drops trailing dots, so "Mrs._B." would not round-trip.
+    .replace(/[._]+$/, '');
+}
+
+// Like sanitize, but keeps spaces so folder names stay readable.
+export function safeDirName(text) {
+  return String(text || '').replace(UNSAFE, '_').replace(/[. ]+$/, '').trim();
 }
 
 // Seesaw class names usually carry the school year, in shapes like

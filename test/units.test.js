@@ -5,7 +5,9 @@ import {
 } from '../src/names.js';
 import { parseSelection } from '../src/prompt.js';
 import { EMPTY_NOTICE } from '../src/download.js';
-import { extractGoogleUrls, googleId, isGoogle, cleanUrl, feedUrl } from '../src/links.js';
+import {
+  extractGoogleUrls, googleId, isGoogle, cleanUrl, feedUrl, fetchScript,
+} from '../src/links.js';
 
 test('URLs are recovered from escaped JSON payloads', () => {
   // Link targets arrive inside API responses, not as clean HTML attributes.
@@ -100,4 +102,18 @@ test('parseSelection handles numbers, ranges, all, and words', () => {
   assert.throws(() => parseSelection('9', 3), /Out of range/);
   assert.throws(() => parseSelection('3-1', 5), /Out of range/);
   assert.throws(() => parseSelection('nope', 3, () => []), /Nothing matches/);
+});
+
+test('file names are valid on Windows too', () => {
+  assert.equal(archiveFilename({ childName: 'Ada', className: 'Year 1: Mrs. B.' }),
+    'Ada_Year_1_Mrs._B.zip');
+  assert.equal(childFolder('Tab\there'), 'Tab_here');
+});
+
+test('the fetch script quotes class names so the shell never expands them', () => {
+  const script = fetchScript([{
+    child: 'Ada', className: `Art "$(rm -rf ~)" it's done.`, kind: 'folder', id: 'ABC123',
+  }]);
+  assert.ok(script.includes(`mkdir -p 'Linked Content/Ada/Art _$(rm -rf ~)_ it'\\''s done'`));
+  assert.ok(script.includes('--drive-root-folder-id ABC123'));
 });

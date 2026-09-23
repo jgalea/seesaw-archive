@@ -17,7 +17,7 @@ Seesaw lets you download a journal archive per class, but every file comes down 
 
 ## What it does
 
-Walks to the Journal Archives list, reads every archive on the account, and downloads them one at a time into:
+Walks to the Journal Archives list, reads every archive on the account, and downloads them one at a time into the Downloads folder in your home directory:
 
 ```
 ~/Downloads/Seesaw Archives/
@@ -38,7 +38,11 @@ npm install
 npm link          # optional, puts `seesaw-archive` on your PATH
 ```
 
-Node 20 or newer.
+Node 20 or newer, on macOS, Linux, or Windows. `npm install` also downloads the Chromium build it drives.
+
+On Linux, Chromium needs a few system libraries. If `login` fails to launch the browser, install them with `sudo npx playwright install-deps chromium`. `login` opens a visible window, so it needs a desktop session; after that, `--headless` works without one.
+
+Tested on macOS, with the unit tests also run on Linux. Windows should work but hasn't been run on a real machine yet.
 
 ## Use
 
@@ -99,7 +103,7 @@ seesaw-archive list --json                     # machine-readable
 
 ## About your password
 
-`login` opens a normal browser window and waits for you to sign in. You type your own password; the tool never asks for it, never receives it, and never stores it. What it saves is the session cookie, in `~/.seesaw-archive/state.json` with owner-only permissions. `seesaw-archive logout` deletes it.
+`login` opens a normal browser window and waits for you to sign in. You type your own password; the tool never asks for it, never receives it, and never stores it. What it saves is the session cookie, in `~/.seesaw-archive/state.json` with owner-only permissions (on Windows that's `%USERPROFILE%\.seesaw-archive\state.json`, protected by your profile folder's access rules). `seesaw-archive logout` deletes it.
 
 Sessions expire after a while. When that happens, commands say so and you run `login` again.
 
@@ -133,6 +137,8 @@ To pull that content down, generate a script and run it:
 seesaw-archive links --fetch-script fetch-linked.sh
 ./fetch-linked.sh
 ```
+
+It's a bash script, so on Windows run it from Git Bash or WSL with `bash fetch-linked.sh`.
 
 It needs [rclone](https://rclone.org) with a read-only Google Drive remote, which you authorize in your browser:
 

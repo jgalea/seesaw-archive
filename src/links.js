@@ -4,6 +4,8 @@
 // Drive folder with no way back to it. The only place those targets exist is
 // the live journal feed, which is what this reads.
 
+import { safeDirName } from './names.js';
+
 const GOOGLE = /https?:\/\/(?:docs|drive)\.google\.com[^\s"'<>)\\\]]+/g;
 
 export function isGoogle(url) {
@@ -112,6 +114,11 @@ export function toTsv(links) {
     .join('\n') + '\n';
 }
 
+// Single quotes, so a class name with $ or a backtick can't run anything.
+function shellQuote(s) {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
 export function fetchScript(links) {
   const lines = [
     '#!/bin/bash',
@@ -124,7 +131,8 @@ export function fetchScript(links) {
   ];
   for (const l of links) {
     if (!l.id || l.kind === 'form') continue;
-    const dest = `"Linked Content/${l.child}/${l.className}"`;
+    const dest = shellQuote(
+      `Linked Content/${safeDirName(l.child) || 'Unknown'}/${safeDirName(l.className) || 'Unknown'}`);
     lines.push(`mkdir -p ${dest}`);
     lines.push(l.kind === 'folder'
       ? `rclone copy gdrive: ${dest} --drive-root-folder-id ${l.id}`
